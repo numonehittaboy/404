@@ -731,7 +731,7 @@
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 browser,
-                userAgent: window.location.href,
+                userAgent: navigator.userAgent,
                 ip: location.ip,
                 flag: location.flag,
                 country: location.country,
